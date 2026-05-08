@@ -1,7 +1,9 @@
+import os
+import re
+from fastapi.responses import FileResponse
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,18 @@ from app.utils import ensure_upload_dir, make_safe_audio_filename, validate_audi
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
+def safe_download_filename(filename: str | None) -> str:
+    if not filename:
+        return "track.mp3"
+
+    name = os.path.basename(filename)
+
+    name = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
+
+    if not name:
+        return "track.mp3"
+
+    return name
 
 def to_track_out(track: Track, db: Session) -> TrackOut:
     likes_count = db.query(func.count(Like.id)).filter(Like.track_id == track.id).scalar() or 0
@@ -116,23 +130,38 @@ def get_track(track_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{track_id}/stream")
-def stream_track(track_id: int, db: Session = Depends(get_db)):
-    track = db.query(Track).filter(Track.id == track_id, Track.is_deleted == False).first()  # noqa: E712
-    if not track:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
+def stream_track(
+    track_id: int,
+    db: Session = Depends(get_db),
+):
+    track = db.query(Track).filter(
+        Track.id == track_id,
+        Track.is_deleted == False
+    ).first()
 
-    file_path = Path(settings.upload_dir) / track.filename
-    if not file_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found")
+    if not track:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Track not found"
+        )
+
+    if not os.path.exists(track.file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found"
+        )
 
     track.play_count += 1
     db.commit()
 
+    safe_filename = safe_download_filename(track.original_filename)
+
+    media_type = track.content_type or "audio/mpeg"
+
     return FileResponse(
-        path=file_path,
-        media_type=track.content_type,
-        filename=track.original_filename,
-        headers={"Content-Disposition": f'inline; filename="{track.original_filename}"'},
+        path=track.file_path,
+        media_type=media_type,
+        filename=safe_filename
     )
 
 
