@@ -137,7 +137,7 @@ def stream_track(
     track = db.query(Track).filter(
         Track.id == track_id,
         Track.is_deleted == False
-    ).first()
+    ).first()  # noqa: E712
 
     if not track:
         raise HTTPException(
@@ -145,7 +145,9 @@ def stream_track(
             detail="Track not found"
         )
 
-    if not os.path.exists(track.file_path):
+    file_path = os.path.join("uploads/tracks", track.filename)
+
+    if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audio file not found"
@@ -154,14 +156,14 @@ def stream_track(
     track.play_count += 1
     db.commit()
 
-    safe_filename = safe_download_filename(track.original_filename)
-
     media_type = track.content_type or "audio/mpeg"
 
+    if "\n" in media_type or "\r" in media_type:
+        media_type = "audio/mpeg"
+
     return FileResponse(
-        path=track.file_path,
-        media_type=media_type,
-        filename=safe_filename
+        path=file_path,
+        media_type=media_type
     )
 
 
