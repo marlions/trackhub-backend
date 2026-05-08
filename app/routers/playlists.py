@@ -1,0 +1,122 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import Playlist, PlaylistTrack, Track, User
+from app.schemas import PlaylistCreate, PlaylistOut
+from app.security import get_current_user
+from app.routers.tracks import to_track_out
+
+router = APIRouter(prefix="/api/playlists", tags=["playlists"])
+
+
+def to_playlist_out(playlist: Playlist, db: Session) -> PlaylistOut:
+    tracks_count = db.query(func.count(PlaylistTrack.id)).filter(PlaylistTrack.playlist_id == playlist.id).scalar() or 0
+    return PlaylistOut(
+        id=playlist.id,
+        name=playlist.name,
+        owner_id=playlist.owner_id,
+        created_at=playlist.created_at,
+        tracks_count=tracks_count,
+    )
+
+
+@router.post("", response_model=PlaylistOut, status_code=status.HTTP_201_CREATED)
+def create_playlist(
+    payload: PlaylistCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = Playlist(name=payload.name.strip(), owner_id=current_user.id)
+    db.add(playlist)
+    db.commit()
+    db.refresh(playlist)
+    return to_playlist_out(playlist, db)
+
+
+@router.get("", response_model=list[PlaylistOut])
+def list_my_playlists(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlists = db.query(Playlist).filter(Playlist.owner_id == current_user.id).order_by(Playlist.created_at.desc()).all()
+    return [to_playlist_out(playlist, db) for playlist in playlists]
+
+
+@router.post("/{playlist_id}/tracks/{track_id}", status_code=status.HTTP_201_CREATED)
+def add_track_to_playlist(
+    playlist_id: int,
+    track_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = db.query(Playlist).filter(Playlist.id == playlist_id, Playlist.owner_id == current_user.id).first()
+    if not playlist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+
+    track = db.query(Track).filter(Track.id == track_id, Track.is_deleted == False).first()  # noqa: E712
+    if not track:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
+
+    existing = db.query(PlaylistTrack).filter(
+        PlaylistTrack.playlist_id == playlist_id,
+        PlaylistTrack.track_id == track_id,
+    ).first()
+    if existing:
+        return {"message": "Track is already in playlist"}
+
+    link = PlaylistTrack(playlist_id=playlist_id, track_id=track_id)
+    db.add(link)
+    db.commit()
+    return {"message": "Track added to playlist"}
+
+
+@router.get("/{playlist_id}/tracks")
+def list_playlist_tracks(
+    playlist_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = db.query(Playlist).filter(Playlist.id == playlist_id, Playlist.owner_id == current_user.id).first()
+    if not playlist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+
+    tracks = [link.track for link in playlist.tracks if not link.track.is_deleted]
+    return [to_track_out(track, db) for track in tracks]
+
+
+@router.delete("/{playlist_id}/tracks/{track_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_track_from_playlist(
+    playlist_id: int,
+    track_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = db.query(Playlist).filter(Playlist.id == playlist_id, Playlist.owner_id == current_user.id).first()
+    if not playlist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+
+    link = db.query(PlaylistTrack).filter(
+        PlaylistTrack.playlist_id == playlist_id,
+        PlaylistTrack.track_id == track_id,
+    ).first()
+    if link:
+        db.delete(link)
+        db.commit()
+    return None
+
+
+@router.delete("/{playlist_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_playlist(
+    playlist_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = db.query(Playlist).filter(Playlist.id == playlist_id, Playlist.owner_id == current_user.id).first()
+    if not playlist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
+
+    db.delete(playlist)
+    db.commit()
+    return None

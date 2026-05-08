@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: trackhub_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trackhub
+      POSTGRES_USER: trackhub
+      POSTGRES_PASSWORD: trackhub
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - trackhub_net
+
+volumes:
+  postgres_data:
+
+networks:
+  trackhub_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
