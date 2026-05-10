@@ -8,3 +8,4 @@ passlib[bcrypt]==1.7.4
 pydantic-settings==2.7.1
 email-validator==2.2.0
 bcrypt==4.0.1
+mutagen==1.47.0
