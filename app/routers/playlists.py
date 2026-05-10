@@ -12,7 +12,17 @@ router = APIRouter(prefix="/api/playlists", tags=["playlists"])
 
 
 def to_playlist_out(playlist: Playlist, db: Session) -> PlaylistOut:
-    tracks_count = db.query(func.count(PlaylistTrack.id)).filter(PlaylistTrack.playlist_id == playlist.id).scalar() or 0
+    tracks_count = (
+        db.query(func.count(PlaylistTrack.id))
+        .join(Track, PlaylistTrack.track_id == Track.id)
+        .filter(
+            PlaylistTrack.playlist_id == playlist.id,
+            Track.is_deleted == False,  # noqa: E712
+        )
+        .scalar()
+        or 0
+    )
+
     return PlaylistOut(
         id=playlist.id,
         name=playlist.name,
