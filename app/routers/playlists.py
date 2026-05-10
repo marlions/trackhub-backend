@@ -76,6 +76,23 @@ def add_track_to_playlist(
     if existing:
         return {"message": "Track is already in playlist"}
 
+    tracks_count = (
+        db.query(func.count(PlaylistTrack.id))
+        .join(Track, PlaylistTrack.track_id == Track.id)
+        .filter(
+            PlaylistTrack.playlist_id == playlist_id,
+            Track.is_deleted == False,  # noqa: E712
+        )
+        .scalar()
+        or 0
+    )
+
+    if tracks_count >= 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="В плейлист нельзя добавить больше 100 треков",
+        )
+
     link = PlaylistTrack(playlist_id=playlist_id, track_id=track_id)
     db.add(link)
     db.commit()

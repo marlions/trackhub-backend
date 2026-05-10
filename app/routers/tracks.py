@@ -51,8 +51,8 @@ def to_track_out(track: Track, db: Session) -> TrackOut:
 
 @router.post("/upload", response_model=TrackOut, status_code=status.HTTP_201_CREATED)
 async def upload_track(
-    title: str = Form(..., min_length=1, max_length=255),
-    author: str = Form(..., min_length=1, max_length=255),
+    title: str = Form(..., min_length=1, max_length=100),
+    author: str = Form(..., min_length=1, max_length=50),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -148,9 +148,9 @@ def stream_track(
             detail="Track not found"
         )
 
-    file_path = os.path.join("uploads/tracks", track.filename)
+    file_path = Path(settings.upload_dir) / track.filename
 
-    if not os.path.exists(file_path):
+    if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audio file not found"
@@ -165,7 +165,7 @@ def stream_track(
         media_type = "audio/mpeg"
 
     return FileResponse(
-        path=file_path,
+        path=str(file_path),
         media_type=media_type
     )
 
@@ -180,6 +180,18 @@ def delete_track(
     if not track:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
 
+    file_path = Path(settings.upload_dir) / track.filename
+
     track.is_deleted = True
     db.commit()
+
+    # По требованиям файл должен удаляться с сервера.
+    # Запись в БД оставляем как soft-delete, чтобы не ломать историю и связи.
+    try:
+        if file_path.exists() and file_path.is_file():
+            file_path.unlink()
+    except OSError:
+        # Удаление записи уже выполнено; ошибка файловой системы не должна возвращать удалённый трек обратно.
+        pass
+
     return None
