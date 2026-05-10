@@ -75,3 +75,22 @@ class PlaylistOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class UserPublicOut(BaseModel):
+    id: int
+    username: str
+    is_following: bool = False
+    followers_count: int = 0
+    following_count: int = 0
+
+
+class FollowOut(BaseModel):
+    id: int
+    username: str
+    followed_at: datetime | None = None
+
+
+class FollowStatusOut(BaseModel):
+    user_id: int
+    is_following: bool
+    followers_count: int

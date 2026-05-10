@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 from app.routers import auth, comments, likes, playlists, tracks
+from app.routers import users
 from app.utils import ensure_upload_dir
 from sqlalchemy import inspect, text
 
@@ -52,3 +53,4 @@ app.include_router(tracks.router)
 app.include_router(likes.router)
 app.include_router(comments.router)
 app.include_router(playlists.router)
+app.include_router(users.router)
