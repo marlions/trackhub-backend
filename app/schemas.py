@@ -37,6 +37,7 @@ class TrackOut(BaseModel):
     original_filename: str
     content_type: str
     file_size_bytes: int
+    duration_seconds: int
     play_count: int
     uploaded_by_id: int
     created_at: datetime

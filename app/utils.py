@@ -41,3 +41,21 @@ def validate_audio_file(file: UploadFile, content: bytes) -> str:
 
 def make_safe_audio_filename(extension: str) -> str:
     return f"{uuid4().hex}{extension}"
+
+def detect_audio_duration_seconds(file_path: Path) -> int:
+    """
+    Возвращает длительность аудиофайла в секундах.
+    Если файл не удалось прочитать, возвращает 0.
+    """
+    try:
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(file_path)
+        length = getattr(getattr(audio, "info", None), "length", None)
+
+        if length is None:
+            return 0
+
+        return max(0, int(round(float(length))))
+    except Exception:
+        return 0

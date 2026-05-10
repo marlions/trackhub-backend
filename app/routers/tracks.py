@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models import Comment, Like, Track, User
 from app.schemas import TrackOut
 from app.security import get_current_user
-from app.utils import ensure_upload_dir, make_safe_audio_filename, validate_audio_file
+from app.utils import detect_audio_duration_seconds, ensure_upload_dir, make_safe_audio_filename, validate_audio_file
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
@@ -39,6 +39,7 @@ def to_track_out(track: Track, db: Session) -> TrackOut:
         original_filename=track.original_filename,
         content_type=track.content_type,
         file_size_bytes=track.file_size_bytes,
+        duration_seconds=track.duration_seconds,
         play_count=track.play_count,
         uploaded_by_id=track.uploaded_by_id,
         created_at=track.created_at,
@@ -62,6 +63,7 @@ async def upload_track(
     filename = make_safe_audio_filename(extension)
     file_path = upload_dir / filename
     file_path.write_bytes(content)
+    duration_seconds = detect_audio_duration_seconds(file_path)
 
     track = Track(
         title=title.strip(),
@@ -70,6 +72,7 @@ async def upload_track(
         original_filename=file.filename or filename,
         content_type=file.content_type or "audio/mpeg",
         file_size_bytes=len(content),
+        duration_seconds=duration_seconds,
         uploaded_by_id=current_user.id,
     )
     db.add(track)
