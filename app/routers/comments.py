@@ -16,8 +16,15 @@ def create_comment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    track = db.query(Track).filter(Track.id == track_id, Track.is_deleted == False).first()  # noqa: E712
-    if not track:
+    track_exists = (
+        db.query(Track.id)
+        .filter(
+            Track.id == track_id,
+            Track.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not track_exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
 
     comment = Comment(user_id=current_user.id, track_id=track_id, text=payload.text.strip())
@@ -37,16 +44,25 @@ def create_comment(
 
 @router.get("/{track_id}/comments", response_model=list[CommentOut])
 def list_comments(track_id: int, db: Session = Depends(get_db)):
-    track = db.query(Track).filter(Track.id == track_id, Track.is_deleted == False).first()  # noqa: E712
-    if not track:
+    track_exists = (
+        db.query(Track.id)
+        .filter(
+            Track.id == track_id,
+            Track.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not track_exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
 
-    comments = (
-        db.query(Comment)
+    rows = (
+        db.query(Comment, User.username)
+        .join(User, Comment.user_id == User.id)
         .filter(Comment.track_id == track_id)
         .order_by(Comment.created_at.desc())
         .all()
     )
+
     return [
         CommentOut(
             id=comment.id,
@@ -54,7 +70,7 @@ def list_comments(track_id: int, db: Session = Depends(get_db)):
             track_id=comment.track_id,
             text=comment.text,
             created_at=comment.created_at,
-            username=comment.user.username,
+            username=username,
         )
-        for comment in comments
+        for comment, username in rows
     ]
