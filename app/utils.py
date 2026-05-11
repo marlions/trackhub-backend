@@ -5,7 +5,6 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.config import settings
 
-# По таблице требований оставлены только MP3 и WAV.
 ALLOWED_AUDIO_TYPES = {
     "audio/mpeg": ".mp3",
     "audio/mp3": ".mp3",
@@ -20,7 +19,7 @@ def ensure_upload_dir() -> Path:
     return path
 
 
-def validate_audio_type(file: UploadFile) -> str:
+def validate_audio_file(file: UploadFile) -> str:
     content_type = file.content_type or ""
     if content_type not in ALLOWED_AUDIO_TYPES:
         raise HTTPException(
@@ -31,20 +30,13 @@ def validate_audio_type(file: UploadFile) -> str:
     return ALLOWED_AUDIO_TYPES[content_type]
 
 
-def validate_audio_file(file: UploadFile, content: bytes) -> str:
-    """Backward-compatible validator for old code paths.
-
-    The optimized upload path validates the type first and streams the body in
-    chunks, so the whole file is not loaded into memory.
-    """
+def validate_audio_size(file_size_bytes: int) -> None:
     max_size = settings.max_audio_size_mb * 1024 * 1024
-    if len(content) > max_size:
+    if file_size_bytes > max_size:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File is too large. Max size is {settings.max_audio_size_mb} MB",
         )
-
-    return validate_audio_type(file)
 
 
 def make_safe_audio_filename(extension: str) -> str:

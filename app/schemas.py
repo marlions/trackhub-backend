@@ -18,6 +18,8 @@ class UserOut(BaseModel):
     id: int
     username: str
     email: EmailStr
+    followers_count: int = 0
+    following_count: int = 0
     created_at: datetime
 
     class Config:
@@ -44,6 +46,7 @@ class TrackOut(BaseModel):
     stream_url: str
     likes_count: int = 0
     comments_count: int = 0
+    is_liked: bool = False
 
     class Config:
         from_attributes = True
@@ -75,6 +78,7 @@ class PlaylistOut(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class UserPublicOut(BaseModel):
     id: int
