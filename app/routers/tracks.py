@@ -2,7 +2,7 @@ import os
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import exists, func, literal, or_, update
 from sqlalchemy.orm import Session
@@ -131,8 +131,8 @@ async def upload_track(
 
 @router.get("", response_model=list[TrackOut])
 def list_tracks(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
@@ -153,6 +153,8 @@ def list_tracks(
 
 @router.get("/my", response_model=list[TrackOut])
 def list_my_tracks(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -163,7 +165,8 @@ def list_my_tracks(
             Track.is_deleted == False,  # noqa: E712
         )
         .order_by(Track.created_at.desc(), Track.id.desc())
-        .limit(100)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return rows_to_track_out(rows)
@@ -171,6 +174,8 @@ def list_my_tracks(
 
 @router.get("/liked", response_model=list[TrackOut])
 def list_liked_tracks(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -182,7 +187,8 @@ def list_liked_tracks(
             Track.is_deleted == False,  # noqa: E712
         )
         .order_by(Like.created_at.desc(), Track.id.desc())
-        .limit(100)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return rows_to_track_out(rows)
@@ -191,6 +197,8 @@ def list_liked_tracks(
 @router.get("/search", response_model=list[TrackOut])
 def search_tracks(
     query: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_current_user),
 ):
@@ -198,7 +206,15 @@ def search_tracks(
     current_user_id = current_user.id if current_user else None
 
     if not normalized_text:
-        return list_tracks(db=db, current_user=current_user)
+        rows = (
+            track_rows_query(db, current_user_id)
+            .filter(Track.is_deleted == False)  # noqa: E712
+            .order_by(Track.created_at.desc(), Track.id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return rows_to_track_out(rows)
 
     normalized = f"%{normalized_text}%"
     rows = (
@@ -208,7 +224,8 @@ def search_tracks(
             or_(func.lower(Track.title).like(normalized), func.lower(Track.author).like(normalized)),
         )
         .order_by(Track.created_at.desc(), Track.id.desc())
-        .limit(50)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return rows_to_track_out(rows)

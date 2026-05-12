@@ -26,6 +26,8 @@ def to_user_public_out(user: User, is_following: bool) -> UserPublicOut:
 @router.get("/search", response_model=list[UserPublicOut])
 def search_users(
     query: str = Query("", min_length=0),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -51,7 +53,8 @@ def search_users(
         users_query
         .filter(User.id != current_user.id)
         .order_by(User.username.asc(), User.id.asc())
-        .limit(30)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -60,6 +63,8 @@ def search_users(
 
 @router.get("/me/following", response_model=list[FollowOut])
 def get_my_following(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -68,6 +73,8 @@ def get_my_following(
         .join(User, Follow.following_id == User.id)
         .filter(Follow.follower_id == current_user.id)
         .order_by(Follow.created_at.desc(), Follow.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -83,6 +90,8 @@ def get_my_following(
 
 @router.get("/me/followers", response_model=list[FollowOut])
 def get_my_followers(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -91,6 +100,8 @@ def get_my_followers(
         .join(User, Follow.follower_id == User.id)
         .filter(Follow.following_id == current_user.id)
         .order_by(Follow.created_at.desc(), Follow.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 

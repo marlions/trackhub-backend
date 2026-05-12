@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -37,7 +37,12 @@ def create_comment(
 
 
 @router.get("/{track_id}/comments", response_model=list[CommentOut])
-def list_comments(track_id: int, db: Session = Depends(get_db)):
+def list_comments(
+    track_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
     track_exists = db.query(Track.id).filter(Track.id == track_id, Track.is_deleted == False).first()  # noqa: E712
     if not track_exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Track not found")
@@ -47,7 +52,8 @@ def list_comments(track_id: int, db: Session = Depends(get_db)):
         .join(User, Comment.user_id == User.id)
         .filter(Comment.track_id == track_id)
         .order_by(Comment.created_at.desc(), Comment.id.desc())
-        .limit(200)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 

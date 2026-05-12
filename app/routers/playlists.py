@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import exists, literal
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,8 @@ def create_playlist(
 
 @router.get("", response_model=list[PlaylistOut])
 def list_my_playlists(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -44,6 +46,8 @@ def list_my_playlists(
         db.query(Playlist)
         .filter(Playlist.owner_id == current_user.id)
         .order_by(Playlist.created_at.desc(), Playlist.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return [to_playlist_out(playlist) for playlist in playlists]
@@ -88,6 +92,8 @@ def add_track_to_playlist(
 @router.get("/{playlist_id}/tracks")
 def list_playlist_tracks(
     playlist_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -108,6 +114,8 @@ def list_playlist_tracks(
             Track.is_deleted == False,  # noqa: E712
         )
         .order_by(PlaylistTrack.created_at.desc(), PlaylistTrack.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
