@@ -22,6 +22,13 @@ from app.utils import (
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 UPLOAD_CHUNK_SIZE = 1024 * 1024
+MAX_COVER_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+ALLOWED_COVER_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 
 def safe_download_filename(filename: str | None) -> str:
@@ -35,6 +42,74 @@ def safe_download_filename(filename: str | None) -> str:
         return "track.mp3"
 
     return name
+
+
+def ensure_cover_upload_dir() -> Path:
+    cover_dir = Path(settings.upload_dir).parent / "covers"
+    cover_dir.mkdir(parents=True, exist_ok=True)
+    return cover_dir
+
+
+def validate_cover_image_file(file: UploadFile) -> str:
+    content_type = (file.content_type or "").lower()
+    extension = ALLOWED_COVER_TYPES.get(content_type)
+
+    if extension is None:
+        raw_name = (file.filename or "").lower()
+        for suffix in (".jpg", ".jpeg", ".png", ".webp"):
+            if raw_name.endswith(suffix):
+                return ".jpg" if suffix == ".jpeg" else suffix
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cover image must be JPG, PNG or WEBP",
+        )
+
+    return extension
+
+
+def make_safe_cover_filename(extension: str) -> str:
+    return f"cover_{os.urandom(16).hex()}{extension}"
+
+
+async def save_cover_image(file: UploadFile | None) -> str | None:
+    if file is None:
+        return None
+
+    extension = validate_cover_image_file(file)
+    cover_dir = ensure_cover_upload_dir()
+    filename = make_safe_cover_filename(extension)
+    file_path = cover_dir / filename
+    file_size_bytes = 0
+
+    try:
+        with file_path.open("wb") as output:
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+
+                file_size_bytes += len(chunk)
+                if file_size_bytes > MAX_COVER_IMAGE_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Cover image must not exceed 5 MB",
+                    )
+                output.write(chunk)
+    except Exception:
+        if file_path.exists():
+            file_path.unlink(missing_ok=True)
+        raise
+
+    if file_size_bytes <= 0:
+        if file_path.exists():
+            file_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cover image is empty",
+        )
+
+    return filename
 
 
 def track_to_out(track: Track, is_liked: bool = False) -> TrackOut:
@@ -53,6 +128,7 @@ def track_to_out(track: Track, is_liked: bool = False) -> TrackOut:
         likes_count=track.likes_count,
         comments_count=track.comments_count,
         is_liked=is_liked,
+        cover_image_url=f"/api/tracks/{track.id}/cover" if track.cover_filename else None,
     )
 
 
@@ -77,6 +153,7 @@ async def upload_track(
     title: str = Form(..., min_length=1, max_length=100),
     author: str = Form(..., min_length=1, max_length=50),
     file: UploadFile = File(...),
+    cover_image: UploadFile | None = File(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -111,6 +188,7 @@ async def upload_track(
         )
 
     duration_seconds = detect_audio_duration_seconds(file_path)
+    cover_filename = await save_cover_image(cover_image)
 
     track = Track(
         title=title.strip(),
@@ -119,6 +197,7 @@ async def upload_track(
         original_filename=file.filename or filename,
         content_type=file.content_type or "audio/mpeg",
         file_size_bytes=file_size_bytes,
+        cover_filename=cover_filename,
         duration_seconds=duration_seconds,
         uploaded_by_id=current_user.id,
     )
@@ -250,6 +329,44 @@ def get_track(
     return track_to_out(track, bool(is_liked))
 
 
+@router.get("/{track_id}/cover")
+def get_track_cover(
+    track_id: int,
+    db: Session = Depends(get_db),
+):
+    track = db.query(Track).filter(
+        Track.id == track_id,
+        Track.is_deleted == False,  # noqa: E712
+    ).first()
+
+    if not track or not track.cover_filename:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cover image not found",
+        )
+
+    cover_path = Path(settings.upload_dir).parent / "covers" / track.cover_filename
+
+    if not cover_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cover image not found",
+        )
+
+    suffix = cover_path.suffix.lower()
+    media_type = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }.get(suffix, "image/jpeg")
+
+    return FileResponse(
+        path=str(cover_path),
+        media_type=media_type,
+    )
+
+
 @router.get("/{track_id}/stream")
 def stream_track(
     track_id: int,
@@ -267,6 +384,7 @@ def stream_track(
         )
 
     file_path = Path(settings.upload_dir) / track.filename
+    cover_path = (Path(settings.upload_dir).parent / "covers" / track.cover_filename) if track.cover_filename else None
 
     if not file_path.exists():
         raise HTTPException(
@@ -340,6 +458,13 @@ def delete_track(
     try:
         if file_path.exists() and file_path.is_file():
             file_path.unlink()
+    except OSError:
+        pass
+
+    try:
+        cover_path = (Path(settings.upload_dir).parent / "covers" / track.cover_filename) if track.cover_filename else None
+        if cover_path and cover_path.exists() and cover_path.is_file():
+            cover_path.unlink()
     except OSError:
         pass
 

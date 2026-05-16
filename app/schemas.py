@@ -47,6 +47,7 @@ class TrackOut(BaseModel):
     likes_count: int = 0
     comments_count: int = 0
     is_liked: bool = False
+    cover_image_url: str | None = None
 
     class Config:
         from_attributes = True

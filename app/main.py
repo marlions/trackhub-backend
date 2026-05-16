@@ -33,6 +33,8 @@ def ensure_database_columns() -> None:
                 connection.execute(text("ALTER TABLE tracks ADD COLUMN comments_count INTEGER NOT NULL DEFAULT 0"))
             if "play_count" not in track_columns:
                 connection.execute(text("ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0"))
+            if "cover_filename" not in track_columns:
+                connection.execute(text("ALTER TABLE tracks ADD COLUMN cover_filename VARCHAR(500)"))
 
         user_columns = _table_columns(inspector, "users")
         if user_columns:
@@ -124,6 +126,7 @@ def ensure_database_indexes() -> None:
     index_statements = [
         "CREATE INDEX IF NOT EXISTS ix_tracks_visible_created ON tracks (is_deleted, created_at DESC, id DESC)",
         "CREATE INDEX IF NOT EXISTS ix_tracks_owner_visible_created ON tracks (uploaded_by_id, is_deleted, created_at DESC, id DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_tracks_cover_filename ON tracks (cover_filename)",
         "CREATE INDEX IF NOT EXISTS ix_likes_user_track ON likes (user_id, track_id)",
         "CREATE INDEX IF NOT EXISTS ix_likes_track_id ON likes (track_id)",
         "CREATE INDEX IF NOT EXISTS ix_comments_track_created ON comments (track_id, created_at DESC, id DESC)",
