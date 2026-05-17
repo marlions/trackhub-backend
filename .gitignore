@@ -17,3 +17,6 @@ uploads/tracks/*
 *.log
 
 postgres_data/
+
+*:Zone.Identifier
+*.Identifier
